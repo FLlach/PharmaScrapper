@@ -263,3 +263,13 @@ Al interactuar con el agente Jules:
 2. **Priorizar robustez en el scraping:** Implementar manejo de errores, reintentos y respeto por rate limits.
 3. **Mantener tipado estricto en TypeScript** y convenciones estándar de **Rails 8 (MVC, Service Objects para la ingesta y RSpec para tests)**.
 4. **No saltar a la UI sin antes haber completado y probado la ingesta y la API.**
+
+## 8. Consideraciones de Arquitectura y Patrones de Diseño
+
+- **Ingesta Desacoplada:** Los scrapers se ejecutan como jobs asíncronos mediante Solid Queue (Rails 8) programados periódicamente.
+- **Motor de Búsqueda:** PostgreSQL con extensión `pg_trgm` e índices GIN sobre campos de texto para búsqueda difusa tolerante a errores tipográficos.
+- **Normalización de Datos:** Separación de entidades canónicas (`Medicine`) y productos por tienda (`PharmacyProduct`) mediante un pipeline de deduplicación y matching.
+- **Estrategia Frontend:** SvelteKit con SSR para rutas dinámicas de producto (SEO) y reactividad en cliente (Svelte 5 runes) para búsqueda y filtrado de precios en vivo.
+- **Testing Pyramid:** 
+  - Backend: Unit tests y request specs con RSpec.
+  - Frontend: Component testing en Storybook y pruebas E2E críticas con Playwright.
