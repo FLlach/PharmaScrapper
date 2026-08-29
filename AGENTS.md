@@ -285,3 +285,10 @@ Al interactuar con el agente Jules:
 ## General Directives for Jules:
 - Always restrict your file changes strictly to the module/directory specified in the task prompt.
 - Never edit multiple architectural layers in a single task/PR.
+
+## Links
+www.cruzverde.cl
+www.farmaciasahumada.cl
+www.salcobrand.cl
+www.drsimi.cl
+www.ligafarmacia.cl
