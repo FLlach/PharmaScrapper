@@ -2,3 +2,4 @@ scraper/venv/
 __pycache__/
 *.pyc
 cruz_verde_products.json
+ahumada_products.json
