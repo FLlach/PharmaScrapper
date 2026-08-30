@@ -4,3 +4,6 @@ __pycache__/
 cruz_verde_products.json
 scraper/*_products.json
 scraper/inspect_*.py
+ahumada_products.json
+venv/
+salcobrand_products.json
