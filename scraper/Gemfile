@@ -1,7 +1,0 @@
-source 'https://rubygems.org'
-
-gem 'httparty'
-gem 'nokogiri'
-gem 'json-schema'
-
-gem "ferrum", "~> 0.18.0"
