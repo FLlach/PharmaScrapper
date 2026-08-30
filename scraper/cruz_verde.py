@@ -1,7 +1,8 @@
 import json
 import argparse
+import time
 from datetime import datetime, timezone
-from playwright.sync_api import sync_playwright
+import requests
 from schema import PharmacyProduct, PharmacyProductBatch
 
 def map_cruz_verde_product(raw_item):
@@ -35,7 +36,26 @@ def map_cruz_verde_product(raw_item):
 
 def scrape_cruz_verde(output_file="cruz_verde_products.json"):
     results = []
-
+    unique_items = {}
+    
+    categories = [
+        "medicamentos",
+        "dermocosmetica",
+        "cuidado-de-la-piel",
+        "belleza",
+        "higiene-y-cuidado-personal",
+        "cuidado-capilar",
+        "vitaminas-y-suplementos",
+        "infantil-y-mama",
+        "bienestar-sexual",
+        "veterinaria",
+    ]
+    
+    from playwright.sync_api import sync_playwright
+    
+    auth_headers = {}
+    auth_cookies = {}
+    
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -43,36 +63,67 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
             viewport={"width": 1920, "height": 1080}
         )
         page = context.new_page()
-
-        def handle_response(response):
-            if "product-service/products/search" in response.url and response.status == 200:
-                try:
-                    data = response.json()
-                    if "hits" in data:
-                        results.extend(data["hits"])
-                except Exception:
-                    pass
-
-        page.on("response", handle_response)
-        print("Navigating to Cruz Verde to trigger API calls...")
+        
+        def on_req(req):
+            nonlocal auth_headers
+            if "product-service/products/search" in req.url:
+                auth_headers = req.headers
+                auth_headers.pop("accept-encoding", None)
+                
+        page.on("request", on_req)
         page.goto("https://www.cruzverde.cl/medicamentos/", wait_until="networkidle")
-
-        # Scroll down to ensure we trigger any initial loading
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(3000)
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(2000)
-
+        
+        for cookie in context.cookies():
+            auth_cookies[cookie["name"]] = cookie["value"]
+            
         browser.close()
+        
+    print("Obtained valid headers and cookies via Playwright. Switching to requests for iteration...")
+    
+    for category in categories:
+        print(f"\nScraping category: {category}")
+        offset = 0
+        limit = 50
+        max_retries = 3
+        
+        while True:
+            url = f"https://api.cruzverde.cl/product-service/products/search?limit={limit}&offset={offset}&refine[]=cgid={category}&isAndes=true&requestPage=CLP"
+            
+            success = False
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(url, headers=auth_headers, cookies=auth_cookies, timeout=15)
+                    if response.status_code == 200:
+                        data = response.json()
+                        hits = data.get("hits", [])
+                        
+                        if not hits:
+                            print(f"No more items found at offset {offset}. Finishing category.")
+                            success = True
+                            break
+                            
+                        print(f"Fetched {len(hits)} items (offset: {offset})")
+                        for item in hits:
+                            if "productId" in item:
+                                unique_items[item["productId"]] = item
+                        
+                        offset += limit
+                        success = True
+                        break
+                    else:
+                        print(f"Request failed with status {response.status_code}. Retrying ({attempt+1}/{max_retries})...")
+                        time.sleep(2)
+                except Exception as e:
+                    print(f"Request error: {e}. Retrying ({attempt+1}/{max_retries})...")
+                    time.sleep(2)
+            
+            if not success or not hits:
+                break
+                
+            time.sleep(0.5) 
 
-    # Deduplicate items by productId
-    unique_items = {}
-    for item in results:
-        if "productId" in item:
-            unique_items[item["productId"]] = item
-
-    print(f"Captured {len(unique_items)} unique products.")
-
+    print(f"\nCaptured {len(unique_items)} unique products across all categories.")
+    
     products = []
     for item in unique_items.values():
         try:
@@ -84,19 +135,19 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
     batch = PharmacyProductBatch(
         scraped_at=datetime.now(timezone.utc),
         pharmacy_name="Cruz Verde",
-        source_url="https://www.cruzverde.cl/medicamentos/",
+        source_url="https://www.cruzverde.cl/",
         items_count=len(products),
         products=products
     )
-
+    
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(batch.model_dump_json(indent=2))
-
+        
     print(f"Successfully mapped and saved {len(products)} products to {output_file}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Scrape Cruz Verde products.")
+    parser = argparse.ArgumentParser(description="Scrape Cruz Verde full catalog.")
     parser.add_argument("--output", default="cruz_verde_products.json", help="Output JSON file name")
     args = parser.parse_args()
-
+    
     scrape_cruz_verde(args.output)
