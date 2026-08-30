@@ -2,6 +2,10 @@ scraper/venv/
 __pycache__/
 *.pyc
 cruz_verde_products.json
+scraper/venv/
+__pycache__/
+*.pyc
+cruz_verde_products.json
 scraper/*_products.json
 scraper/inspect_*.py
 ahumada_products.json
