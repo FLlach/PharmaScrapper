@@ -13,3 +13,5 @@ Este documento registra observaciones, mejores prácticas y correcciones detecta
 
 ## 3. Fase 3: Frontend
 - **Manejo de Estado (Runes):** En Svelte 5 se deben usar *runes* (`$state`, `$derived`, `$props`, `$effect`) en lugar de los métodos reactivos de Svelte 4 para garantizar el máximo rendimiento de actualización de la UI.
+- **Scraper Best Practices**: Do not commit scraped data `.json` files or scratchpad `.py` scripts used during development. Always remove them before submitting a patch.
+- **Playwright Native Methods**: Prefer Playwright's native locator actions (e.g., `page.locator().click()`) over injecting javascript `page.evaluate(() => element.click())` for more reliable and deterministic automation.
