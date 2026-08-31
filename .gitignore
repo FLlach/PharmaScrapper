@@ -1,4 +1,8 @@
-scraper/vendor/
-scraper/.bundle/
-scraper/vendor/
-node_modules
+scraper/venv/
+__pycache__/
+*.pyc
+cruz_verde_products.json
+scraper/venv/
+__pycache__/
+*.pyc
+cruz_verde_products.json
