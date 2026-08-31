@@ -16,6 +16,7 @@ El proyecto se estructura en tres fases sucesivas:
 El proyecto se alinea estrictamente con el siguiente stack:
 
 ### 2.1 Backend & Base de Datos
+- **Scraping:** Python
 - **Framework:** Ruby on Rails 8
 - **Lenguaje:** Ruby 3.x
 - **Base de Datos:** PostgreSQL

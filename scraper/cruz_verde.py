@@ -37,7 +37,7 @@ def map_cruz_verde_product(raw_item):
 def scrape_cruz_verde(output_file="cruz_verde_products.json"):
     results = []
     unique_items = {}
-
+    
     categories = [
         "medicamentos",
         "dermocosmetica",
@@ -50,12 +50,12 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
         "bienestar-sexual",
         "veterinaria",
     ]
-
+    
     from playwright.sync_api import sync_playwright
-
+    
     auth_headers = {}
     auth_cookies = {}
-
+    
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -63,32 +63,32 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
             viewport={"width": 1920, "height": 1080}
         )
         page = context.new_page()
-
+        
         def on_req(req):
             nonlocal auth_headers
             if "product-service/products/search" in req.url:
                 auth_headers = req.headers
                 auth_headers.pop("accept-encoding", None)
-
+                
         page.on("request", on_req)
         page.goto("https://www.cruzverde.cl/medicamentos/", wait_until="networkidle")
-
+        
         for cookie in context.cookies():
             auth_cookies[cookie["name"]] = cookie["value"]
-
+            
         browser.close()
-
+        
     print("Obtained valid headers and cookies via Playwright. Switching to requests for iteration...")
-
+    
     for category in categories:
         print(f"\nScraping category: {category}")
         offset = 0
         limit = 50
         max_retries = 3
-
+        
         while True:
             url = f"https://api.cruzverde.cl/product-service/products/search?limit={limit}&offset={offset}&refine[]=cgid={category}&isAndes=true&requestPage=CLP"
-
+            
             success = False
             for attempt in range(max_retries):
                 try:
@@ -96,17 +96,17 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
                     if response.status_code == 200:
                         data = response.json()
                         hits = data.get("hits", [])
-
+                        
                         if not hits:
                             print(f"No more items found at offset {offset}. Finishing category.")
                             success = True
                             break
-
+                            
                         print(f"Fetched {len(hits)} items (offset: {offset})")
                         for item in hits:
                             if "productId" in item:
                                 unique_items[item["productId"]] = item
-
+                        
                         offset += limit
                         success = True
                         break
@@ -116,14 +116,14 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
                 except Exception as e:
                     print(f"Request error: {e}. Retrying ({attempt+1}/{max_retries})...")
                     time.sleep(2)
-
+            
             if not success or not hits:
                 break
-
-            time.sleep(0.5)
+                
+            time.sleep(0.5) 
 
     print(f"\nCaptured {len(unique_items)} unique products across all categories.")
-
+    
     products = []
     for item in unique_items.values():
         try:
@@ -139,15 +139,15 @@ def scrape_cruz_verde(output_file="cruz_verde_products.json"):
         items_count=len(products),
         products=products
     )
-
+    
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(batch.model_dump_json(indent=2))
-
+        
     print(f"Successfully mapped and saved {len(products)} products to {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape Cruz Verde full catalog.")
     parser.add_argument("--output", default="cruz_verde_products.json", help="Output JSON file name")
     args = parser.parse_args()
-
+    
     scrape_cruz_verde(args.output)

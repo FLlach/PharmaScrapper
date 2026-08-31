@@ -1,5 +1,5 @@
 class Medicine < ApplicationRecord
-  # Entidad canónica
-  # has_many :pharmacy_products
-  # validations
+  has_many :pharmacy_products
+  has_many :favorite_medicines, dependent: :destroy
+  has_many :users, through: :favorite_medicines
 end

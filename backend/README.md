@@ -1,16 +1,24 @@
-# Fase 2: Backend & API RESTful (Ruby on Rails 8 & PostgreSQL)
+# README
 
-## Objetivo
-Implementar la API que recibirá, almacenará y servirá los datos de medicamentos al frontend.
+This README would normally document whatever steps are necessary to get the
+application up and running.
 
-## Tareas Clave
-- **Modelos:** `Pharmacy`, `Medicine`, `PharmacyProduct`, `PriceHistory`.
-- **Servicios:** Lógica de negocio para la ingesta de JSON (`PriceIngestionService`) y normalización (matching).
-- **Controladores:** Endpoints RESTful en `app/controllers/api/v1`.
-- **Tareas (Tasks):** `lib/tasks/` para programar la ingesta asíncrona.
-- **Tests:** Cobertura con RSpec en `spec/`.
+Things you may want to cover:
 
-## Instrucciones
-- Mantener convención de nombres y estructura estándar de Rails.
-- Priorizar la deduplicación de medicamentos en el servicio de ingesta.
-- Los endpoints deben ser eficientes, apoyándose en índices en la DB para búsquedas.
+* Ruby version
+
+* System dependencies
+
+* Configuration
+
+* Database creation
+
+* Database initialization
+
+* How to run the test suite
+
+* Services (job queues, cache servers, search engines, etc.)
+
+* Deployment instructions
+
+* ...

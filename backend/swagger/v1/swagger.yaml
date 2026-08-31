@@ -1,0 +1,128 @@
+---
+openapi: 3.0.1
+info:
+  title: API V1
+  version: v1
+paths:
+  "/api/v1/medicines":
+    get:
+      summary: list medicines
+      tags:
+      - Medicines
+      parameters:
+      - name: query
+        in: query
+        description: Search query for medicine name or active ingredient
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    active_ingredient:
+                      type: string
+                      nullable: true
+                    dosage:
+                      type: string
+                      nullable: true
+                    bioequivalent:
+                      type: boolean
+                      nullable: true
+  "/api/v1/medicines/{id}/comparison":
+    get:
+      summary: compare medicine prices
+      tags:
+      - Medicines
+      parameters:
+      - name: id
+        in: path
+        description: id
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  medicine:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  comparisons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pharmacy:
+                          type: string
+                        pharmacy_logo:
+                          type: string
+                          nullable: true
+                        product_name:
+                          type: string
+                        sku:
+                          type: string
+                        url:
+                          type: string
+                        image_url:
+                          type: string
+                          nullable: true
+                        current_price_regular:
+                          type: integer
+                          nullable: true
+                        current_price_offer:
+                          type: integer
+                          nullable: true
+                        in_stock:
+                          type: boolean
+                        last_captured_at:
+                          type: string
+                          format: date-time
+  "/api/v1/pharmacies":
+    get:
+      summary: list pharmacies
+      tags:
+      - Pharmacies
+      responses:
+        '200':
+          description: successful
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    base_domain:
+                      type: string
+                    logo_url:
+                      type: string
+                    active:
+                      type: boolean
+servers:
+- url: https://{defaultHost}
+  variables:
+    defaultHost:
+      default: www.example.com
