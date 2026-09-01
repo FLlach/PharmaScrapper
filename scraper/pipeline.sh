@@ -15,7 +15,7 @@ if [ ! -d "venv" ]; then
     echo "Please set up the environment first."
 else
     # Activate virtual environment
-    source venv/bin/activate
+    source venv/Scripts/Activate
 
     # Execute all scraper scripts
     # Currently, we have cruz_verde.py. We'll find all python scripts except ingest.py, schema.py and test scripts.
