@@ -4,9 +4,9 @@ import os
 
 DB_CONFIG = {
     'dbname': os.getenv('DB_NAME', 'pharma_scraper'),
-    'user': os.getenv('DB_USER', 'scraper_user'),
-    'password': os.getenv('DB_PASSWORD', 'scraper_password'),
-    'host': os.getenv('DB_HOST', 'localhost'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'Contr4sen4'),
+    'host': os.getenv('DB_HOST', '127.0.0.1'),
     'port': os.getenv('DB_PORT', '5432')
 }
 
