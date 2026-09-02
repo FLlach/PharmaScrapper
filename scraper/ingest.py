@@ -9,35 +9,48 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from db import get_connection
 
-MATCH_THRESHOLD = 85
+MATCH_THRESHOLD = 92
+
+def sanitize_price(val):
+    if val is None:
+        return None
+    try:
+        num = int(val)
+        if num < 0 or num > 2147483647:
+            return None
+        return num
+    except (ValueError, TypeError):
+        return None
 
 def normalize_text(text):
     if not text:
         return ""
-    # Remove accents/diacritics
     text = unidecode(text)
-    # Convert to lowercase
     text = text.lower()
-    # Remove non-alphanumeric characters (keep spaces)
     text = re.sub(r'[^a-z0-9\s]', '', text)
-    # Remove extra spaces
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def get_or_create_pharmacy(conn, pharmacy_name):
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("SELECT id FROM pharmacies WHERE name = %s", (pharmacy_name,))
+        cur.execute("SELECT id FROM pharmacies WHERE name = %s LIMIT 1", (pharmacy_name,))
         res = cur.fetchone()
         if res:
             return res['id']
 
-        cur.execute("INSERT INTO pharmacies (name) VALUES (%s) RETURNING id", (pharmacy_name,))
-        return cur.fetchone()['id']
+        cur.execute("""
+            INSERT INTO pharmacies (name, active, created_at, updated_at)
+            VALUES (%s, true, NOW(), NOW())
+            RETURNING id
+        """, (pharmacy_name,))
+        pharm_id = cur.fetchone()['id']
+        conn.commit()
+        return pharm_id
 
 def load_medicines_cache(conn):
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
-            SELECT id, normalized_name, normalized_active_ingredient, presentation
+            SELECT id, name, active_ingredient, presentation, normalized_name, normalized_active_ingredient
             FROM medicines
         """)
         return cur.fetchall()
@@ -46,28 +59,29 @@ def find_medicine_match(medicines_cache, norm_name, norm_active_ingredient, pres
     if not medicines_cache:
         return None
 
-    # Try exact match first
     for med in medicines_cache:
-        if med['normalized_name'] == norm_name and \
-           med['normalized_active_ingredient'] == norm_active_ingredient and \
-           med['presentation'] == presentation:
+        m_norm_name = med.get('normalized_name') or normalize_text(med.get('name', ''))
+        m_norm_ai = med.get('normalized_active_ingredient') or normalize_text(med.get('active_ingredient', ''))
+        m_pres = med.get('presentation', '') or ''
+
+        if m_norm_name == norm_name and m_norm_ai == norm_active_ingredient and m_pres == presentation:
             return med['id']
 
-    # Try fuzzy matching
     best_match = None
     highest_score = 0
 
     for med in medicines_cache:
-        # We match primarily on name and active ingredient
-        score_name = fuzz.token_sort_ratio(norm_name, med['normalized_name'])
+        m_norm_name = med.get('normalized_name') or normalize_text(med.get('name', ''))
+        m_norm_ai = med.get('normalized_active_ingredient') or normalize_text(med.get('active_ingredient', ''))
+
+        score_name = fuzz.token_sort_ratio(norm_name, m_norm_name)
 
         score_ai = 100
-        if norm_active_ingredient and med['normalized_active_ingredient']:
-            score_ai = fuzz.token_sort_ratio(norm_active_ingredient, med['normalized_active_ingredient'])
-        elif norm_active_ingredient or med['normalized_active_ingredient']:
-            score_ai = 50 # Partial mismatch
+        if norm_active_ingredient and m_norm_ai:
+            score_ai = fuzz.token_sort_ratio(norm_active_ingredient, m_norm_ai)
+        elif norm_active_ingredient or m_norm_ai:
+            score_ai = 50
 
-        # Calculate a weighted score
         total_score = (score_name * 0.7) + (score_ai * 0.3)
 
         if total_score > highest_score:
@@ -80,73 +94,108 @@ def find_medicine_match(medicines_cache, norm_name, norm_active_ingredient, pres
     return None
 
 def get_or_create_medicine(conn, medicines_cache, product):
-    norm_name = normalize_text(product['name'])
+    prod_name = (product.get('name') or '').strip()
+    if not prod_name:
+        return None
+
+    norm_name = normalize_text(prod_name)
     norm_active_ingredient = normalize_text(product.get('active_ingredient', ''))
-    presentation = product.get('presentation', '')
+    presentation = product.get('presentation', '') or ''
+    dosage = product.get('dosage')
+    bioequivalent = bool(product.get('bioequivalent'))
 
     med_id = find_medicine_match(medicines_cache, norm_name, norm_active_ingredient, presentation)
     if med_id:
-        return med_id
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM medicines WHERE id = %s LIMIT 1", (med_id,))
+            if cur.fetchone():
+                return med_id
+        medicines_cache[:] = [m for m in medicines_cache if m['id'] != med_id]
 
-    # Create new
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        try:
-            cur.execute("""
-                INSERT INTO medicines (name, active_ingredient, presentation, normalized_name, normalized_active_ingredient)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, normalized_name, normalized_active_ingredient, presentation
-            """, (
-                product['name'],
-                product.get('active_ingredient', ''),
-                presentation,
-                norm_name,
-                norm_active_ingredient
-            ))
-            new_med = cur.fetchone()
-            medicines_cache.append(new_med)
-            return new_med['id']
-        except psycopg2.IntegrityError:
-            conn.rollback()
-            # If concurrent insert happened, fetch it
-            cur.execute("""
-                SELECT id, normalized_name, normalized_active_ingredient, presentation
-                FROM medicines
-                WHERE normalized_name = %s AND normalized_active_ingredient = %s AND presentation = %s
-            """, (norm_name, norm_active_ingredient, presentation))
-            res = cur.fetchone()
-            if res:
-                medicines_cache.append(res)
-                return res['id']
-            return None
+        cur.execute("""
+            SELECT id, name, active_ingredient, presentation, normalized_name, normalized_active_ingredient
+            FROM medicines
+            WHERE name = %s
+            LIMIT 1
+        """, (prod_name,))
+        existing = cur.fetchone()
+        if existing:
+            medicines_cache.append(existing)
+            return existing['id']
 
-def get_or_create_pharmacy_product(conn, pharmacy_id, medicine_id, product):
+        cur.execute("""
+            INSERT INTO medicines (
+                name, active_ingredient, dosage, presentation,
+                normalized_name, normalized_active_ingredient, bioequivalent,
+                created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id, name, active_ingredient, presentation, normalized_name, normalized_active_ingredient
+        """, (
+            prod_name,
+            product.get('active_ingredient', ''),
+            dosage,
+            presentation,
+            norm_name,
+            norm_active_ingredient,
+            bioequivalent
+        ))
+        new_med = cur.fetchone()
+        medicines_cache.append(new_med)
+        return new_med['id']
+
+def get_or_create_pharmacy_product(conn, pharmacy_id, pharmacy_name, medicine_id, product):
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT id FROM pharmacies WHERE id = %s LIMIT 1", (pharmacy_id,))
+        if not cur.fetchone():
+            pharmacy_id = get_or_create_pharmacy(conn, pharmacy_name)
+
+        prod_url = product.get('product_url') or product.get('url') or ''
+        image_url = product.get('image_url')
+        sku = str(product['sku'])
+
         cur.execute("""
             SELECT id FROM pharmacy_products
             WHERE pharmacy_id = %s AND sku = %s
-        """, (pharmacy_id, product['sku']))
+            LIMIT 1
+        """, (pharmacy_id, sku))
         res = cur.fetchone()
 
         if res:
+            cur.execute("""
+                UPDATE pharmacy_products
+                SET medicine_id = COALESCE(medicine_id, %s),
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (medicine_id, res['id']))
             return res['id']
 
         cur.execute("""
-            INSERT INTO pharmacy_products (pharmacy_id, medicine_id, sku, name, brand, product_url)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO pharmacy_products (
+                pharmacy_id, medicine_id, sku, name, brand,
+                product_url, url, image_url, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             RETURNING id
         """, (
             pharmacy_id,
             medicine_id,
-            product['sku'],
+            sku,
             product['name'],
             product.get('brand', ''),
-            product['product_url']
+            prod_url,
+            prod_url,
+            image_url
         ))
         return cur.fetchone()['id']
 
 def process_price_history(conn, pharmacy_product_id, product, scraped_at):
+    reg_price = sanitize_price(product.get('price_regular'))
+    off_price = sanitize_price(product.get('price_offer'))
+    in_stock = bool(product.get('in_stock', True))
+
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Get most recent price history
         cur.execute("""
             SELECT price_regular, price_offer, in_stock
             FROM price_histories
@@ -156,20 +205,22 @@ def process_price_history(conn, pharmacy_product_id, product, scraped_at):
         """, (pharmacy_product_id,))
         latest = cur.fetchone()
 
-        # If it changed or it's the first one, insert
         if not latest or \
-           latest['price_regular'] != product['price_regular'] or \
-           latest['price_offer'] != product.get('price_offer') or \
-           latest['in_stock'] != product['in_stock']:
+           latest['price_regular'] != reg_price or \
+           latest['price_offer'] != off_price or \
+           latest['in_stock'] != in_stock:
 
            cur.execute("""
-               INSERT INTO price_histories (pharmacy_product_id, price_regular, price_offer, in_stock, captured_at)
-               VALUES (%s, %s, %s, %s, %s)
+               INSERT INTO price_histories (
+                   pharmacy_product_id, price_regular, price_offer,
+                   in_stock, captured_at, created_at, updated_at
+               )
+               VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
            """, (
                pharmacy_product_id,
-               product['price_regular'],
-               product.get('price_offer'),
-               product['in_stock'],
+               reg_price,
+               off_price,
+               in_stock,
                scraped_at
            ))
 
@@ -190,24 +241,36 @@ def process_batch(filepath):
         medicines_cache = load_medicines_cache(conn)
 
         for i, prod in enumerate(products):
-            med_id = get_or_create_medicine(conn, medicines_cache, prod)
-            pp_id = get_or_create_pharmacy_product(conn, pharmacy_id, med_id, prod)
-            process_price_history(conn, pp_id, prod, scraped_at)
+            with conn.cursor() as sp_cur:
+                sp_cur.execute("SAVEPOINT item_sp;")
+            try:
+                med_id = get_or_create_medicine(conn, medicines_cache, prod)
+                if med_id:
+                    pp_id = get_or_create_pharmacy_product(conn, pharmacy_id, pharmacy_name, med_id, prod)
+                    process_price_history(conn, pp_id, prod, scraped_at)
+                with conn.cursor() as sp_cur:
+                    sp_cur.execute("RELEASE SAVEPOINT item_sp;")
 
-            if (i+1) % 100 == 0:
-                print(f"Processed {i+1}/{len(products)}...")
-                conn.commit()
+                if (i+1) % 100 == 0:
+                    print(f"Processed {i+1}/{len(products)}...")
+                    conn.commit()
+            except Exception as item_err:
+                with conn.cursor() as sp_cur:
+                    sp_cur.execute("ROLLBACK TO SAVEPOINT item_sp;")
+                print(f"Warning: skipped product {prod.get('sku')} due to error: {item_err}")
 
         conn.commit()
-        print("Batch processing complete.")
+        print(f"Batch processing complete for {filepath}.")
     except Exception as e:
         conn.rollback()
-        print(f"Error processing batch: {e}")
+        print(f"Error processing batch {filepath}: {e}")
     finally:
         conn.close()
 
 if __name__ == '__main__':
-    # Find all json files in scraper dir ending with _products.json
+    from db import init_db
+    init_db()
+
     for f in os.listdir('.'):
         if f.endswith('_products.json'):
             process_batch(f)

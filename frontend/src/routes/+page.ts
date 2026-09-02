@@ -1,8 +1,9 @@
 import type { PageLoad } from './$types';
+import { API_BASE_URL } from '$lib/config';
 
 export const load: PageLoad = async ({ fetch }) => {
   try {
-    const response = await fetch('http://localhost:3000/api/v1/medicines');
+    const response = await fetch(`${API_BASE_URL}/medicines`);
 
     if (response.ok) {
       const medicines = await response.json();
