@@ -12,3 +12,4 @@ ahumada_products.json
 venv/
 salcobrand_products.json
 /backend/vendor/
+.coverage
