@@ -4,8 +4,7 @@ module Api
       allow_unauthenticated_access only: [:index]
 
       def index
-        pharmacies = Pharmacy.all
-        render json: pharmacies, status: :ok
+        render json: Pharmacy.all
       end
     end
   end

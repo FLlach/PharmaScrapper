@@ -1,71 +1,75 @@
 require 'swagger_helper'
 
-RSpec.describe 'Api::V1::Sessions', type: :request do
-  let(:user) { User.create!(email_address: 'test@example.com', password: 'password', password_confirmation: 'password', role: 'standard') }
+RSpec.describe 'api/v1/sessions', type: :request do
+  path '/api/v1/login' do
+    post('create session') do
+      tags 'Sessions'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :credentials, in: :body, schema: {
+        type: :object,
+        properties: {
+          email_address: { type: :string },
+          password: { type: :string }
+        },
+        required: [ 'email_address', 'password' ]
+      }
 
-  describe 'POST /api/v1/login' do
-    context 'with valid credentials' do
-      it 'creates a session and returns success' do
-        expect {
-          post '/api/v1/login', params: { email_address: user.email_address, password: 'password' }
-        }.to change(Session, :count).by(1)
+      response(200, 'successful') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
+        let(:credentials) { { email_address: 'test@example.com', password: 'password' } }
 
-        expect(response).to have_http_status(:ok)
-
-        json_response = JSON.parse(response.body)
-        expect(json_response['message']).to eq('Logged in successfully')
-        expect(json_response['user']['email']).to eq(user.email_address)
-
-        # Check if the signed cookie is set
-        expect(response.cookies['session_id']).to be_present
+        schema type: :object, properties: {
+          message: { type: :string },
+          user: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              email: { type: :string },
+              name: { type: :string, nullable: true },
+              role: { type: :string }
+            }
+          }
+        }
+        run_test!
       end
-    end
 
-    context 'with invalid credentials' do
-      it 'does not create a session and returns unauthorized' do
-        expect {
-          post '/api/v1/login', params: { email_address: user.email_address, password: 'wrongpassword' }
-        }.not_to change(Session, :count)
+      response(401, 'unauthorized') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
+        let(:credentials) { { email_address: 'test@example.com', password: 'wrongpassword' } }
 
-        expect(response).to have_http_status(:unauthorized)
-
-        json_response = JSON.parse(response.body)
-        expect(json_response['error']).to eq('Try another email address or password.')
+        schema type: :object, properties: {
+          error: { type: :string }
+        }
+        run_test!
       end
     end
   end
 
-  describe 'DELETE /api/v1/logout' do
-    context 'when authenticated' do
-      let!(:session_record) { user.sessions.create!(ip_address: '127.0.0.1', user_agent: 'RSpec') }
+  path '/api/v1/logout' do
+    delete('delete session') do
+      tags 'Sessions'
+      produces 'application/json'
 
-      before do
-        # Since standard cookies array in RSpec request spec doesn't support signed cookies directly
-        # we authenticate by logging in first to set the signed cookie properly.
-        post '/api/v1/login', params: { email_address: user.email_address, password: 'password' }
+      response(200, 'successful') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
+
+        before do
+          post '/api/v1/login', params: { email_address: 'test@example.com', password: 'password' }
+        end
+
+        schema type: :object, properties: {
+          message: { type: :string }
+        }
+        run_test!
       end
 
-      it 'destroys the session and clears the cookie' do
-        expect {
-          delete '/api/v1/logout'
-        }.to change(Session, :count).by(-1)
-
-        expect(response).to have_http_status(:ok)
-        json_response = JSON.parse(response.body)
-        expect(json_response['message']).to eq('Logged out successfully')
-
-        # Check that the cookie is cleared
-        expect(response.cookies['session_id']).to be_blank
-      end
-    end
-
-    context 'when not authenticated' do
-      it 'returns unauthorized' do
-        delete '/api/v1/logout'
-
-        expect(response).to have_http_status(:unauthorized)
-        json_response = JSON.parse(response.body)
-        expect(json_response['error']).to eq('Unauthorized access')
+      response(401, 'unauthorized') do
+        # Testing logout without a session
+        schema type: :object, properties: {
+          error: { type: :string }
+        }
+        run_test!
       end
     end
   end

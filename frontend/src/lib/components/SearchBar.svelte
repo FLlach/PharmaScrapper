@@ -1,16 +1,18 @@
 <script lang="ts">
   let { placeholder = 'Buscar medicamentos, principios activos...', value = $bindable('') } = $props();
 
-  let timeout: number;
-
-  function handleInput(event: Event) {
-    const target = event.target as HTMLInputElement;
-    clearTimeout(timeout);
-    // Añadimos un pequeño debounce aunque la reactividad será inmediata para prop propósitos visuales
-    timeout = setTimeout(() => {
-      value = target.value;
-    }, 300);
+  function debounce<T extends (...args: any[]) => void>(fn: T, delay = 300) {
+    let timeout: ReturnType<typeof setTimeout>;
+    return (...args: Parameters<T>) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), delay);
+    };
   }
+
+  const handleInput = debounce((event: Event) => {
+    const target = event.target as HTMLInputElement;
+    value = target.value;
+  }, 300);
 </script>
 
 <div class="relative max-w-2xl mx-auto mb-8">
