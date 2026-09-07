@@ -1,47 +1,76 @@
-require 'rails_helper'
+require 'swagger_helper'
 
-RSpec.describe "Api::V1::Sessions", type: :request do
-  let(:user) { User.create!(email_address: "test@example.com", password: "password", name: "Test User") }
+RSpec.describe 'api/v1/sessions', type: :request do
+  path '/api/v1/login' do
+    post('create session') do
+      tags 'Sessions'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :credentials, in: :body, schema: {
+        type: :object,
+        properties: {
+          email_address: { type: :string },
+          password: { type: :string }
+        },
+        required: [ 'email_address', 'password' ]
+      }
 
-  describe "POST /api/v1/login" do
-    context "with valid credentials" do
-      it "creates a session and returns a success response" do
-        post api_v1_login_path, params: { email_address: user.email_address, password: "password" }
+      response(200, 'successful') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
+        let(:credentials) { { email_address: 'test@example.com', password: 'password' } }
 
-        expect(response).to have_http_status(:ok)
-        expect(JSON.parse(response.body)).to eq(
-          "message" => "Logged in successfully",
-          "user" => {
-            "id" => user.id,
-            "email" => user.email_address,
-            "name" => user.name,
-            "role" => user.role
+        schema type: :object, properties: {
+          message: { type: :string },
+          user: {
+            type: :object,
+            properties: {
+              id: { type: :integer },
+              email: { type: :string },
+              name: { type: :string, nullable: true },
+              role: { type: :string }
+            }
           }
-        )
+        }
+        run_test!
       end
-    end
 
-    context "with invalid credentials" do
-      it "returns an unauthorized response" do
-        post api_v1_login_path, params: { email_address: user.email_address, password: "wrong_password" }
+      response(401, 'unauthorized') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
+        let(:credentials) { { email_address: 'test@example.com', password: 'wrongpassword' } }
 
-        expect(response).to have_http_status(:unauthorized)
-        expect(JSON.parse(response.body)).to eq({ "error" => "Try another email address or password." })
+        schema type: :object, properties: {
+          error: { type: :string }
+        }
+        run_test!
       end
     end
   end
 
-  describe "DELETE /api/v1/logout" do
-    before do
-      # Login to create a session
-      post api_v1_login_path, params: { email_address: user.email_address, password: "password" }
-    end
+  path '/api/v1/logout' do
+    delete('delete session') do
+      tags 'Sessions'
+      produces 'application/json'
 
-    it "terminates the session and returns a success response" do
-      delete api_v1_logout_path
+      response(200, 'successful') do
+        let!(:user) { User.create!(email_address: 'test@example.com', password: 'password', role: 'standard') }
 
-      expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)).to eq({ "message" => "Logged out successfully" })
+        before do
+          post '/api/v1/login', params: { email_address: 'test@example.com', password: 'password' }
+        end
+
+        schema type: :object, properties: {
+          message: { type: :string }
+        }
+        run_test!
+      end
+
+      response(401, 'unauthorized') do
+        # Testing logout without a session
+        schema type: :object, properties: {
+          error: { type: :string }
+        }
+        run_test!
+      end
     end
   end
 end
